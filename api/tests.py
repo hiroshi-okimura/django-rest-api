@@ -1,7 +1,11 @@
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APITestCase
 from rest_framework import status
+from rest_framework.authtoken.models import Token
 from .models import Todo
+
+User = get_user_model()
 
 
 class TodoModelTest(TestCase):
@@ -107,7 +111,14 @@ class TodoAPITest(APITestCase):
     """Todo APIエンドポイントのテスト"""
 
     def setUp(self):
-        """テストデータの準備"""
+        """テストデータの準備（認証ユーザーとTodo）"""
+        self.user = User.objects.create_user(
+            username="testuser",
+            password="testpass123",
+        )
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
+
         self.todo1 = Todo.objects.create(
             title="最初のTodo",
             description="説明1",
@@ -118,6 +129,19 @@ class TodoAPITest(APITestCase):
             description="説明2",
             completed=True,
         )
+
+    def test_list_todos_unauthorized_returns_401(self):
+        """GET /api/todos/ - トークンなしでは401を返すことを確認"""
+        self.client.credentials()
+        url = "/api/todos/"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_test_view_unauthorized_returns_401(self):
+        """GET /api/test/ - トークンなしでは401を返すことを確認"""
+        self.client.credentials()
+        response = self.client.get("/api/test/")
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_list_todos(self):
         """GET /api/todos/ - Todo一覧を取得できることを確認"""
@@ -268,3 +292,31 @@ class TodoAPITest(APITestCase):
         response = self.client.delete(url)
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class AuthTokenAPITest(APITestCase):
+    """認証トークン取得エンドポイントのテスト"""
+
+    def test_obtain_token_with_valid_credentials(self):
+        """POST /api/auth-token/ - 正しいusername/passwordでトークンが返ることを確認"""
+        User.objects.create_user(username="authuser", password="authpass123")
+        url = "/api/auth-token/"
+        response = self.client.post(
+            url,
+            {"username": "authuser", "password": "authpass123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("token", response.data)
+        self.assertTrue(len(response.data["token"]) > 0)
+
+    def test_obtain_token_with_invalid_credentials_returns_400(self):
+        """POST /api/auth-token/ - 誤った認証情報で400を返すことを確認"""
+        User.objects.create_user(username="authuser", password="authpass123")
+        url = "/api/auth-token/"
+        response = self.client.post(
+            url,
+            {"username": "authuser", "password": "wrongpassword"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
