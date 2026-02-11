@@ -8,4 +8,5 @@ router.register(r"todos", views.TodoViewSet)
 urlpatterns = [
     path("", include(router.urls)),
     path("test/", views.test_view, name="test"),
+    path("auth-token/", views.auth_token, name="auth-token"),
 ]
